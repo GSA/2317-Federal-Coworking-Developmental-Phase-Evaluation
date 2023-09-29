@@ -5,7 +5,6 @@ date: "2023-09-12"
 ---
 
 
-
 ```{r setup}
 #this is the only part you need to change whenever you are updating the figures
 #first, make sure you set your work directory to where your files are coming from and where they will be saved. 
@@ -34,8 +33,6 @@ head(initial_dat)
 initial_dat <- initial_dat[-1,]
 
 ```
-
-
 
 
 ```{r load packages}
