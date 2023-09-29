@@ -1,0 +1,849 @@
+---
+title: "federal-coworking-check-out-figures"
+output: pdf_document
+date: "2023-09-12"
+---
+
+
+
+```{r setup}
+#this is the only part you need to change whenever you are updating the figures
+#first, make sure you set your work directory to where your files are coming from and where they will be saved. 
+#then all you need to do is load the new data set of the initial survey results, ensuring the variable names have not changed
+#
+setwd("G:/Shared drives/GSA Evaluation Division/Projects/1.0 Real Estate Solutions (LQ1)/2317 Federal Coworking Developmental Phase Evaluation/04. Analysis/9.12.23 Data Download")
+#set working directory, where all the files are coming from and where they will be saved.
+
+##load check out data survey sheet 
+checkout_dat <- readxl::read_xlsx("G:/Shared drives/GSA Evaluation Division/Projects/1.0 Real Estate Solutions (LQ1)/2317 Federal Coworking Developmental Phase Evaluation/04. Analysis/9.12.23 Data Download/Fed Cowork CHECK-OUT_September 12, 2023_text.xlsx")
+
+#check first six rows to make sure everything looks right
+head(checkout_dat)
+
+#the first row is a repeat of the column names, so we remove that first row:
+checkout_dat <- checkout_dat[-1,]
+
+head(checkout_dat)
+
+##load initial survey data 
+initial_dat <- readxl::read_xlsx("G:/Shared drives/GSA Evaluation Division/Projects/1.0 Real Estate Solutions (LQ1)/2317 Federal Coworking Developmental Phase Evaluation/04. Analysis/9.12.23 Data Download/Fed Cowork INITIAL_September 12, 2023_text.xlsx")
+#check first six rows to make sure everything looks right
+head(initial_dat)
+
+#the first row is a repeat of the column names, so we remove that first row:
+initial_dat <- initial_dat[-1,]
+
+```
+
+
+
+
+```{r load packages}
+library(readr)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(stringr)
+library(forcats)
+library(googlesheets4)
+library(ggthemes)
+library(cowplot)
+library(scales)
+```
+
+
+
+```{r functions to use}
+#for multi-select variables 
+
+extract_and_binary <- function(dat, x, a) {
+  y <- str_extract(a, x)
+  y <- case_when(y == x ~ 1)
+  y <- replace_na(y, 0)
+  return(y)
+}
+
+
+#for aggregate plots
+#
+ag_plot <- function(dat, x, y, z) {
+  agplot <- ggplot(dat, aes(y = sum, x = reorder(x, -sum))) +
+    geom_col(fill = "#003C71") + 
+    theme_gdocs() +
+  labs(title = y) +
+  xlab(z) +
+  ylab("Number of Responses") +
+  theme(
+    plot.title = element_text(hjust = 0, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title.y = element_text(face = "bold", size = 12, color = "black", hjust = 0), axis.title.x = element_text(face = "bold", size = 12, color = "black"), plot.background = element_rect(color = "white")) +
+  scale_x_discrete(expand = c(0,0),labels = function(x) str_wrap(x, 5))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1)) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)
+    ) +
+  geom_text(aes(label = sum), vjust = -0.05, color = "black", size = 3)
+return(agplot)
+  }
+
+#for categorical plots
+actual_plot <- function(dat, x, y) {
+  actual_plot <- ggplot(dat, aes(fill = x, y = freq, x = reorder(actual_ws, -freq))) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = y) +
+  xlab("Work Style in a Typical Pay Period") +
+  ylab("Percent of Respondents by Work Style") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 7), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = -0.25, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236", "pink", "orange","blue", "purple"), labels = function(x) str_wrap(x, 20))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.5, color = "black", size = 2)
+  return(actual_plot)
+}
+
+```
+
+```{r merge initial and check-out}
+#merging two data sets to show figures by categories that are in the initial survey 
+initial_dat_2 <- initial_dat %>%
+  select(email, ws1_1, ws1_2, ws1_3, ws2)
+initial_dat_2 <- initial_dat_2 %>%
+  drop_na(email)
+merged_dat <- inner_join(initial_dat_2, checkout_dat, by = "email")
+merged_dat <- merged_dat %>%
+  filter(email != "test") 
+
+```
+
+
+
+```{r clean up for ws1, actual work style questions}
+
+
+#exploring workstyle variables
+unique(merged_dat$ws1_1)
+tail(merged_dat$ws1_1)
+unique(merged_dat$ws1_2)
+unique(merged_dat$ws1_3)
+unique(merged_dat$ws1_4)
+
+tail(merged_dat)
+
+#convert character to numeric
+merged_dat$ws1_1 <- as.numeric(merged_dat$ws1_1)
+merged_dat$ws1_2 <- as.numeric(merged_dat$ws1_2)
+merged_dat$ws1_3 <- as.numeric(merged_dat$ws1_3)
+
+
+#we can just use one of these to understand styles, using home to create the personas, ws1_1, but we will check the validity. 
+
+#need to add travel and home together 
+
+merged_dat$ws_2_and_3 <- (merged_dat$ws1_2) + (merged_dat$ws1_3)
+length(merged_dat$ws1_2)
+length(merged_dat$ws_2_and_3) #check the lengths are the same
+unique(merged_dat$ws_2_and_3) #this is now the agency office days, people who are not working remote
+unique(merged_dat$ws1_4) #only 76 are other
+merged_dat <- merged_dat %>%
+  mutate(actual_ws = case_when(
+    ws_2_and_3 == 0.0 ~ "Majority Remote",
+    ws_2_and_3 == 1.0 ~ "Majority Remote",
+    ws_2_and_3 == 1.5 ~ "Majority Remote",
+    ws_2_and_3 == 2.0 ~ "Majority Remote",
+    ws_2_and_3 == 3.0 ~ "Combination",
+    ws_2_and_3 == 4.0 ~ "Combination",
+    ws_2_and_3 == 5.0 ~ "Combination",
+    ws_2_and_3 == 6.0 ~ "Combination",
+   ws_2_and_3 == 7.0 ~ "Combination",
+    ws_2_and_3 == 8.0 ~ "Majority On-Site",
+    ws_2_and_3 == 9.0 ~ "Majority On-Site",
+  ws_2_and_3 == 9.5 ~ "Majority On-Site",
+    ws_2_and_3 == 10.0 ~ "Majority On-Site"))
+
+merged_dat$actual_ws <- replace_na(merged_dat$actual_ws, "Did Not Answer")
+unique(merged_dat$actual_ws) #did it work?
+
+
+#checking how many for each now:
+merged_dat %>% filter(actual_ws == "Majority Remote")
+merged_dat %>% filter(actual_ws == "Majority On-Site")
+merged_dat %>% filter(actual_ws == "Combination")
+
+
+```
+
+```{r post1 data clean}
+unique(checkout_dat$post1)
+
+#post1 response options: 
+#with punctuation
+#Reduce underutilized office space
+# Allow for greater operational flexibility
+# Support public facing services
+# Access equipment/supplies
+# Develop and sustain organizational culture
+# Attract and retain talent
+# Train and develop employees
+# Facilitate meetings and team collaboration
+# Support inter-agency collaboration
+# Improve performance/productivity
+# Increase innovation
+# Provide space for traveling employees to touch down
+# 
+# #without punctuation
+#Reduce underutilized office space
+# Allow for greater operational flexibility
+# Support public facing services
+# Access equipmentsupplies
+# Develop and sustain organizational culture
+# Attract and retain talent
+# Train and develop employees
+# Facilitate meetings and team collaboration
+# Support interagency collaboration
+# Improve performanceproductivity
+# Increase innovation
+# Provide space for traveling employees to touch down
+
+#to use for aggregate
+checkout_dat$post1 <- str_remove_all(checkout_dat$post1, "[:punct:]")
+checkout_dat$post1red <- extract_and_binary(checkout_dat, "Reduce underutilized office space", checkout_dat$post1)
+checkout_dat$post1flex <- extract_and_binary(checkout_dat, "Allow for greater operational flexibility", checkout_dat$post1)
+checkout_dat$post1sup <- extract_and_binary(checkout_dat, "Support public facing services", checkout_dat$post1)
+checkout_dat$post1access <- extract_and_binary(checkout_dat, "Access equipmentsupplies", checkout_dat$post1)
+checkout_dat$post1dev <- extract_and_binary(checkout_dat, "Develop and sustain organizational culture", checkout_dat$post1)
+checkout_dat$post1attr <- extract_and_binary(checkout_dat, "Attract and retain talent", checkout_dat$post1)
+checkout_dat$post1train <- extract_and_binary(checkout_dat, "Train and develop employees", checkout_dat$post1)
+checkout_dat$post1fac <- extract_and_binary(checkout_dat, "Facilitate meetings and team collaboration", checkout_dat$post1)
+checkout_dat$post1inter <- extract_and_binary(checkout_dat, "Support interagency collaboration", checkout_dat$post1)
+checkout_dat$post1prod <- extract_and_binary(checkout_dat, "Improve performanceproductivity", checkout_dat$post1)
+checkout_dat$post1innov <- extract_and_binary(checkout_dat, "Increase innovation", checkout_dat$post1)
+checkout_dat$post1travel <- extract_and_binary(checkout_dat, "Provide space for traveling employees to touch down", checkout_dat$post1)
+
+
+#to use for category
+merged_dat$post1 <- str_remove_all(merged_dat$post1, "[:punct:]")
+merged_dat$post1red <- extract_and_binary(merged_dat, "Reduce underutilized office space", merged_dat$post1)
+merged_dat$post1flex <- extract_and_binary(merged_dat, "Allow for greater operational flexibility", merged_dat$post1)
+merged_dat$post1sup <- extract_and_binary(merged_dat, "Support public facing services", merged_dat$post1)
+merged_dat$post1access <- extract_and_binary(merged_dat, "Access equipmentsupplies", merged_dat$post1)
+merged_dat$post1dev <- extract_and_binary(merged_dat, "Develop and sustain organizational culture", merged_dat$post1)
+merged_dat$post1attr <- extract_and_binary(merged_dat, "Attract and retain talent", merged_dat$post1)
+merged_dat$post1train <- extract_and_binary(merged_dat, "Train and develop employees", merged_dat$post1)
+merged_dat$post1fac <- extract_and_binary(merged_dat, "Facilitate meetings and team collaboration", merged_dat$post1)
+merged_dat$post1inter <- extract_and_binary(merged_dat, "Support interagency collaboration", merged_dat$post1)
+merged_dat$post1prod <- extract_and_binary(merged_dat, "Improve performanceproductivity", merged_dat$post1)
+merged_dat$post1innov <- extract_and_binary(merged_dat, "Increase innovation", merged_dat$post1)
+merged_dat$post1travel <- extract_and_binary(merged_dat, "Provide space for traveling employees to touch down", merged_dat$post1)
+
+post1_dat <- merged_dat %>%
+  drop_na(actual_ws) %>%
+  select(post1red:post1travel, actual_ws) %>%
+  pivot_longer(c(post1red:post1travel), names_to = "post1answer",
+               values_to = "count") %>%
+  group_by(actual_ws, post1answer) %>%
+  summarise(sum = sum(count))
+
+post1_dat <- post1_dat %>%
+  mutate(post1answer = case_when(
+    post1answer == "post1red" ~ "Reduce underutilized office space",
+    post1answer == "post1flex" ~ "Allow for greater operational flexibility", 
+    post1answer =="post1sup" ~ "Support public facing services",
+    post1answer =="post1access" ~ "Access equipment",
+    post1answer == "post1dev" ~ "Develop and sustain organizational culture",
+    post1answer == "post1attr" ~ "Attract and retain talent",
+    post1answer =="post1train" ~ "Train and develop employees",
+    post1answer =="post1fac" ~  "Facilitate meetings and team collaboration",
+    post1answer == "post1inter" ~ "Support inter-agency collaboration",
+    post1answer =="post1prod" ~ "Improve performance",
+    post1answer =="post1innov" ~ "Increase innovation",
+    post1answer =="post1travel" ~ "Provide space for traveling employees"
+  )) #this just fixes the labels on the plots
+#creating percent columns
+post1_dat$perc1 <- round(post1_dat$sum/sum(post1_dat$sum) * 100)  
+
+post1_dat <- post1_dat %>% 
+  filter(actual_ws != "Did Not Answer") %>%
+  group_by(actual_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100))
+```
+
+
+```{r post1 aggregate figures}
+#clean up the data structure to create the figure
+post1ag_dat <- checkout_dat %>%
+  select(post1red:post1travel) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(post1red:post1travel), names_to = "post1answer",
+               values_to = "count") %>%
+  group_by(post1answer) %>%
+  summarise(sum = sum(count))
+
+post1ag_dat$perc <- round(post1ag_dat$sum/sum(post1ag_dat$sum) * 100)  
+post1ag_dat <- post1ag_dat %>%
+  mutate(post1answer = case_when(
+    post1answer == "post1red" ~ "Reduce underutilized office space",
+    post1answer == "post1flex" ~ "Allow for greater operational flexibility", 
+    post1answer =="post1sup" ~ "Support public facing services",
+    post1answer =="post1access" ~ "Access equipment",
+    post1answer == "post1dev" ~ "Develop and sustain organizational culture",
+    post1answer == "post1attr" ~ "Attract and retain talent",
+    post1answer =="post1train" ~ "Train and develop employees",
+    post1answer =="post1fac" ~  "Facilitate meetings and team collaboration",
+    post1answer == "post1inter" ~ "Support inter-agency collaboration",
+    post1answer =="post1prod" ~ "Improve performance",
+    post1answer =="post1innov" ~ "Increase innovation",
+    post1answer =="post1travel" ~ "Provide space for traveling employees"
+  )) #this just fixes the labels on the plots
+unique(post1ag_dat$post1answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+post1fig_ag <- ag_plot(post1ag_dat, post1ag_dat$post1answer, "What are the top advantages of Federal Coworking space for your organization?", "Advantages")
+post1fig_ag
+ggsave(post1fig_ag, 
+       filename = "post1fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+```{r post 1 actual pref and agency}
+#clean up the data structure to create the figure
+#actual work style plot: 
+post1figure_actual <- actual_plot(post1_dat, post1_dat$post1answer, "What are the top advantages of Federal Coworking space for your organization?")
+post1figure_actual
+ggsave(post1figure_actual, 
+       filename = "post1figure_actual.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+#pref work style plot:
+post1_dat <- merged_dat %>%
+  drop_na(actual_ws) %>%
+  select(post1red:post1travel, actual_ws) %>%
+  pivot_longer(c(post1red:post1travel), names_to = "post1answer",
+               values_to = "count") %>%
+  group_by(actual_ws, post1answer) %>%
+  summarise(sum = sum(count))
+
+```
+
+
+```{r post2 data clean}
+unique(checkout_dat$post2)
+
+#post2 response options: 
+#without punctuation
+# Change management challenges eg lack of organizational support
+# Inadequate data to evaluate the costs and benefits of adopting Federal Coworking
+# UnionsCollective Bargaining Agreements CBAs
+# Alternative office space preferred agency office
+# Home office space preferred
+# Privacy and security concerns sharing space
+# Agency return to office plans
+# Concern that GSA will abandon the coworking program
+
+
+checkout_dat$post2 <- str_remove_all(checkout_dat$post2, "[:punct:]")
+checkout_dat$post2change <- extract_and_binary(checkout_dat, "Change management challenges eg lack of organizational support", checkout_dat$post2)
+checkout_dat$post2inad <- extract_and_binary(checkout_dat, "Inadequate data to evaluate the costs and benefits of adopting Federal Coworking", checkout_dat$post2)
+checkout_dat$post2unions <- extract_and_binary(checkout_dat, "UnionsCollective Bargaining Agreements CBAs", checkout_dat$post2)
+checkout_dat$post2alt <- extract_and_binary(checkout_dat, "Alternative office space preferred agency office", checkout_dat$post2)
+checkout_dat$post2home <- extract_and_binary(checkout_dat, "Home office space preferred", checkout_dat$post2)
+checkout_dat$post2priv <- extract_and_binary(checkout_dat, "Privacy and security concerns sharing space", checkout_dat$post2)
+checkout_dat$post2agen <- extract_and_binary(checkout_dat, "Agency return to office plans", checkout_dat$post2)
+checkout_dat$post2concern <- extract_and_binary(checkout_dat, "Concern that GSA will abandon the coworking program", checkout_dat$post2)
+
+
+```
+
+
+```{r post2 aggregate figures}
+#clean up the data structure to create the figure
+post2ag_dat <- checkout_dat %>%
+  select(post2change:post2concern) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(post2change:post2concern), names_to = "post2answer",
+               values_to = "count") %>%
+  group_by(post2answer) %>%
+  summarise(sum = sum(count))
+
+post2ag_dat$perc <- round(post2ag_dat$sum/sum(post2ag_dat$sum) * 100)  
+post2ag_dat <- post2ag_dat %>%
+  mutate(post2answer = case_when(
+    post2answer == "post2change" ~ "Change management challenges", 
+    post2answer =="post2inad"~"Inadequate data to evaluate", 
+    post2answer =="post2unions" ~ "Collective Bargaining Agreements", 
+    post2answer =="post2alt" ~ "Alternative office space preferred", 
+    post2answer =="post2home" ~ "Home office space preferred", 
+    post2answer =="post2priv" ~ "Privacy and security concerns sharing space", 
+    post2answer =="post2agen" ~ "Agency return to office plans",
+    post2answer =="post2concern" ~ "Concern that GSA will abandon the coworking program"
+)) #this just fixes the labels on the plots
+unique(post2ag_dat$post2answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+post2fig_ag <- ag_plot(post2ag_dat, post2ag_dat$post2answer, "What are the most significant obstacles to Federal Coworking\nadoption for your organization?", "Obstacles")
+post2fig_ag
+ggsave(post2fig_ag, 
+       filename = "post2fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+```{r daily1 data clean}
+unique(checkout_dat$daily1)
+
+#Attended a training or professional development event
+# Met in-person with colleagues from my team
+# Met in-person with people outside of my team
+# Worked independently (e.g., solo/focused work
+# Met with others virtually (phone or video)
+# Connected informally/socially in-person with others
+
+
+checkout_dat$daily1 <- str_remove_all(checkout_dat$daily1, "[:punct:]")
+checkout_dat$daily1train <- extract_and_binary(checkout_dat, "Attended a training or professional development event", checkout_dat$daily1)
+checkout_dat$daily1coll <- extract_and_binary(checkout_dat, "Met inperson with colleagues from my team", checkout_dat$daily1)
+checkout_dat$daily1out <- extract_and_binary(checkout_dat, "Met inperson with people outside of my team", checkout_dat$daily1)
+checkout_dat$daily1solo <- extract_and_binary(checkout_dat, "Worked independently eg solofocused work", checkout_dat$daily1)
+checkout_dat$daily1virt <- extract_and_binary(checkout_dat, "Met with others virtually phone or video", checkout_dat$daily1)
+checkout_dat$daily1social <- extract_and_binary(checkout_dat, "Connected informallysocially inperson with others", checkout_dat$daily1)
+
+
+```
+
+
+```{r daily1 aggregate figures}
+#clean up the data structure to create the figure
+daily1ag_dat <- checkout_dat %>%
+  select(daily1train:daily1social) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(daily1train:daily1social), names_to = "daily1answer",
+               values_to = "count") %>%
+  group_by(daily1answer) %>%
+  summarise(sum = sum(count))
+
+
+daily1ag_dat$perc <- round(daily1ag_dat$sum/sum(daily1ag_dat$sum) * 100)  
+daily1ag_dat <- daily1ag_dat %>%
+  mutate(daily1answer = case_when(
+    daily1answer == "daily1train" ~ "Attended a training or event", 
+    daily1answer =="daily1coll"~"Met in-person w/ my team", 
+    daily1answer =="daily1out" ~ "Met in-person w/ people outside of my team", 
+    daily1answer =="daily1solo" ~ "Worked independently", 
+    daily1answer =="daily1virt" ~ "Met with others virtually", 
+    daily1answer =="daily1social" ~ "Connected informally/socially"
+    )) #this just fixes the labels on the plots
+unique(daily1ag_dat$daily1answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+daily1fig_ag <- ag_plot(daily1ag_dat, daily1ag_dat$daily1answer, "What did you do at the Federal Coworking site today?", "") +
+  theme(axis.text.x = )
+daily1fig_ag
+ggsave(daily1fig_ag, 
+       filename = "daily1fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+```{r daily2 data clean}
+unique(checkout_dat$daily2)
+
+# Open seating in shared area
+# Phone booth
+# Meeting / conference room
+# Dedicated desk
+# Private office
+# Lounge / cafe
+# Kitchen / break room
+
+
+checkout_dat$daily21 <- extract_and_binary(checkout_dat, "Open seating in shared area", checkout_dat$daily2)
+checkout_dat$daily22 <- extract_and_binary(checkout_dat, "Phone booth", checkout_dat$daily2)
+checkout_dat$daily23 <- extract_and_binary(checkout_dat, "Meeting / conference room", checkout_dat$daily2)
+checkout_dat$daily24 <- extract_and_binary(checkout_dat, "Dedicated desk", checkout_dat$daily2)
+checkout_dat$daily25 <- extract_and_binary(checkout_dat, "Private office", checkout_dat$daily2)
+checkout_dat$daily26 <- extract_and_binary(checkout_dat, "Lounge / cafe", checkout_dat$daily2)
+checkout_dat$daily27 <- extract_and_binary(checkout_dat, "Kitchen / break room", checkout_dat$daily2)
+
+```
+
+
+```{r daily2 aggregate figures}
+#clean up the data structure to create the figure
+daily2ag_dat <- checkout_dat %>%
+  select(daily21:daily27) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(daily21:daily27), names_to = "daily2answer",
+               values_to = "count") %>%
+  group_by(daily2answer) %>%
+  summarise(sum = sum(count))
+
+
+daily2ag_dat$perc <- round(daily2ag_dat$sum/sum(daily2ag_dat$sum) * 100)  
+daily2ag_dat <- daily2ag_dat %>%
+  mutate(daily2answer = case_when(
+    daily2answer == "daily21" ~ "Open seating in shared area", 
+    daily2answer =="daily22"~"Phone booth", 
+    daily2answer =="daily23" ~ "Meeting / conference room", 
+    daily2answer =="daily24" ~ "Dedicated desk", 
+    daily2answer =="daily25" ~ "Private office", 
+    daily2answer =="daily26" ~ "Lounge / cafe",
+    daily2answer =="daily27" ~ "Kitchen / break room"
+    )) #this just fixes the labels on the plots
+unique(daily2ag_dat$daily2answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+daily2fig_ag <- ag_plot(daily2ag_dat, daily2ag_dat$daily2answer, "What type of space did you use at the Federal Coworking site today?", "")
+daily2fig_ag
+ggsave(daily2fig_ag, 
+       filename = "daily2fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+```{r daily3 data clean}
+unique(checkout_dat$daily3)
+
+# Not applicable/ meeting space met or exceeded my expectations
+# Space was too large
+# Space was too small
+# Space was too loud
+# Space was not private
+# Space was difficult to reserve
+# Space did not have adequate AV equipment
+
+
+checkout_dat$daily31 <- extract_and_binary(checkout_dat, "Not applicable - meeting space met or exceeded my expectations", checkout_dat$daily3)
+checkout_dat$daily32 <- extract_and_binary(checkout_dat, "Space was too large", checkout_dat$daily3)
+checkout_dat$daily33 <- extract_and_binary(checkout_dat, "Space was too small", checkout_dat$daily3)
+checkout_dat$daily34 <- extract_and_binary(checkout_dat, "Space was too loud", checkout_dat$daily3)
+checkout_dat$daily35 <- extract_and_binary(checkout_dat, "Space was not private", checkout_dat$daily3)
+checkout_dat$daily36 <- extract_and_binary(checkout_dat, "Space was difficult to reserve", checkout_dat$daily3)
+checkout_dat$daily37 <- extract_and_binary(checkout_dat, "Space did not have adequate AV equipment", checkout_dat$daily3)
+
+```
+
+
+```{r daily3 aggregate figures}
+#clean up the data structure to create the figure
+daily3ag_dat <- checkout_dat %>%
+  select(daily31:daily37) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(daily31:daily37), names_to = "daily3answer",
+               values_to = "count") %>%
+  group_by(daily3answer) %>%
+  summarise(sum = sum(count))
+
+daily3ag_dat
+daily3ag_dat$perc <- round(daily3ag_dat$sum/sum(daily3ag_dat$sum) * 100)  
+daily3ag_dat <- daily3ag_dat %>%
+  mutate(daily3answer = case_when(
+    daily3answer == "daily31" ~ "None, meeting space met or exceeded my expectations", 
+    daily3answer =="daily32"~"Space was too large", 
+    daily3answer =="daily33" ~ "Space was too small", 
+    daily3answer =="daily34" ~ "Space was too loud", 
+    daily3answer =="daily35" ~ "Space was not private", 
+    daily3answer =="daily36" ~ "Space was difficult to reserve",
+    daily3answer =="daily37" ~ "Space did not have adequate AV equipment"
+    )) #this just fixes the labels on the plots
+unique(daily3ag_dat$daily3answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+daily3fig_ag <- ag_plot(daily3ag_dat, daily3ag_dat$daily3answer, "What concerns did you have? ", "")
+daily3fig_ag
+ggsave(daily3fig_ag, 
+       filename = "daily3fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+```{r daily4 data clean}
+unique(checkout_dat$daily4)
+
+# I had a more pleasant experience than I typically do in my homeassigned office space
+# I was able to go to other places in the nearby area eg grocery gym doctor retail etc
+# I was able to access child care onsite or nearby
+# I met new people
+# I had better socialinterpersonal interactions than I typically do in my homeassigned office space
+# I was more productive than I typically am in homeassigned office space
+# I was more creativeinnovative than I typically am in homeassigned office space
+# I had better concentration than I typically do in my homeassigned office space
+# None
+
+checkout_dat$daily4 <- str_remove_all(checkout_dat$daily4, "[:punct:]")
+checkout_dat$daily41 <- extract_and_binary(checkout_dat, "I had a more pleasant experience than I typically do in my homeassigned office space", checkout_dat$daily4)
+checkout_dat$daily42 <- extract_and_binary(checkout_dat, "I was able to go to other places in the nearby area eg grocery gym doctor retail etc", checkout_dat$daily4)
+checkout_dat$daily43 <- extract_and_binary(checkout_dat, "I was able to access child care onsite or nearby", checkout_dat$daily4)
+checkout_dat$daily44 <- extract_and_binary(checkout_dat, "I met new people", checkout_dat$daily4)
+checkout_dat$daily45 <- extract_and_binary(checkout_dat, "I had better socialinterpersonal interactions than I typically do in my homeassigned office space", checkout_dat$daily4)
+checkout_dat$daily46 <- extract_and_binary(checkout_dat, "I was more productive than I typically am in homeassigned office space", checkout_dat$daily4)
+checkout_dat$daily47 <- extract_and_binary(checkout_dat, "I was more creativeinnovative than I typically am in homeassigned office space", checkout_dat$daily4)
+checkout_dat$daily48 <- extract_and_binary(checkout_dat, "I had better concentration than I typically do in my homeassigned office space", checkout_dat$daily4)
+checkout_dat$daily49 <- extract_and_binary(checkout_dat, "None", checkout_dat$daily4)
+```
+
+
+```{r daily4 aggregate figures}
+#clean up the data structure to create the figure
+daily4ag_dat <- checkout_dat %>%
+  select(daily41:daily49) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(daily41:daily49), names_to = "daily4answer",
+               values_to = "count") %>%
+  group_by(daily4answer) %>%
+  summarise(sum = sum(count))
+
+daily4ag_dat
+daily4ag_dat$perc <- round(daily4ag_dat$sum/sum(daily4ag_dat$sum) * 100)  
+daily4ag_dat <- daily4ag_dat %>%
+  mutate(daily4answer = case_when(
+    daily4answer == "daily41" ~ "More pleasant experience", 
+    daily4answer =="daily42"~"Went to places in the nearby area", 
+    daily4answer =="daily43" ~ "Accessed child care onsite or nearby", 
+    daily4answer =="daily44" ~ "Met new people", 
+    daily4answer =="daily45" ~ "Better social interactions", 
+    daily4answer =="daily46" ~ "More productive",
+    daily4answer =="daily47" ~ "More creative / innovative",
+    daily4answer =="daily48" ~ "Better concentration",
+    daily4answer =="daily49" ~ "None"
+    )) #this just fixes the labels on the plots
+unique(daily4ag_dat$daily4answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+daily4fig_ag <- ag_plot(daily4ag_dat, daily4ag_dat$daily4answer, "What benefits did you experience?", "")
+daily4fig_ag
+ggsave(daily4fig_ag, 
+       filename = "daily4fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+```{r return1 aggregate figure }
+unique(checkout_dat$return1)
+
+return1ag_dat <- count(checkout_dat, return1)
+return1ag_dat <- return1ag_dat %>%
+  rename("sum" = "n") %>%
+  drop_na()
+
+return1ag_fig <- ag_plot(return1ag_dat, return1ag_dat$return1, "Do you plan to return to the Federal Coworking space again?", "")
+return1ag_fig
+ggsave(return1ag_fig, 
+       filename = "return1ag_fig.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+```{r return3 data clean}
+unique(checkout_dat$return3)
+# 
+# I prefer my home office
+# I prefer my agency office
+# Im visiting from out of town
+# Im uncomfortable working around others
+# I had a negative interaction with someone
+# The location is inconvenient
+# Inefficient building entryexit access eg security process
+# I require access to agency-dedicated wifi eg cannot share guest wifi
+# Parking is too costly inconvenient write in amount
+# 
+
+checkout_dat$return3 <- str_remove_all(checkout_dat$return3, "[:punct:]")
+checkout_dat$return3 <- str_squish(checkout_dat$return3)
+
+checkout_dat$return31 <- extract_and_binary(checkout_dat, "I prefer my home office", checkout_dat$return3)
+checkout_dat$return32 <- extract_and_binary(checkout_dat, "I prefer my agency office", checkout_dat$return3)
+checkout_dat$return33 <- extract_and_binary(checkout_dat, "Im visiting from out of town", checkout_dat$return3)
+checkout_dat$return34 <- extract_and_binary(checkout_dat, "Im uncomfortable working around others", checkout_dat$return3)
+checkout_dat$return35 <- extract_and_binary(checkout_dat, "I had a negative interaction with someone", checkout_dat$return3)
+checkout_dat$return36 <- extract_and_binary(checkout_dat, "The location is inconvenient", checkout_dat$return3)
+checkout_dat$return37 <- extract_and_binary(checkout_dat, "Inefficient building entryexit access eg security process", checkout_dat$return3)
+checkout_dat$return38 <- extract_and_binary(checkout_dat, "I require access to agencydedicated wifi eg cannot share guest wifi", checkout_dat$return3)
+checkout_dat$return39 <- extract_and_binary(checkout_dat, "Parking is too costly inconvenient write in amount", checkout_dat$return3)
+```
+
+
+
+```{r return3 aggregate figures}
+#clean up the data structure to create the figure
+return3ag_dat <- checkout_dat %>%
+  select(return31:return39) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(return31:return39), names_to = "return3answer",
+               values_to = "count") %>%
+  group_by(return3answer) %>%
+  summarise(sum = sum(count))
+
+return3ag_dat
+return3ag_dat$perc <- round(return3ag_dat$sum/sum(return3ag_dat$sum) * 100)  
+return3ag_dat <- return3ag_dat %>%
+  mutate(return3answer = case_when(
+    return3answer == "return31" ~ "Prefer home office", 
+    return3answer =="return32"~"Prefer agency office", 
+    return3answer =="return33" ~ "Visiting from out of town", 
+    return3answer =="return34" ~ "Uncomfortable working around others", 
+    return3answer =="return35" ~ "Negative interaction with someone", 
+    return3answer =="return36" ~ "Location is inconvenient",
+    return3answer =="return37" ~ "Inefficient building entry/exit",
+    return3answer =="return38" ~ "Require agency-dedicated wifi",
+    return3answer =="return39" ~ "Parking too costly / inconvenient"
+    )) #this just fixes the labels on the plots
+unique(return3ag_dat$return3answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+return3fig_ag <- ag_plot(return3ag_dat, return3ag_dat$return3answer, "Why are you unlikely to return?", "")
+return3fig_ag
+ggsave(return3fig_ag, 
+       filename = "return3fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+
+```{r return 4}
+unique(checkout_dat$return4)
+
+#response options 
+#NA - no potential obstacles/barriers
+# I prefer my home office
+# I prefer my agency office
+# I'm uncomfortable working around others
+# There was inadequate meeting space
+# I have privacy and security concerns
+# It is burdensome to bring my things each time (e.g., equipment, materials, supplies, personal items)
+# The location is inconvenient
+# Inefficient building entry/exit access (e.g., security process)
+# I require access to agency-dedicated wifi (e.g., cannot share guest wifi)
+# Parking is too costly/inconvenient (specify $ amount) _
+# 
+#
+checkout_dat$return4 <- str_remove_all(checkout_dat$return4, "[:punct:]")
+checkout_dat$return4 <- str_squish(checkout_dat$return4)
+checkout_dat$return41 <- extract_and_binary(checkout_dat, "Not applicable no potential obstaclesbarriers", checkout_dat$return4)
+checkout_dat$return42 <- extract_and_binary(checkout_dat, "I prefer my home office", checkout_dat$return4)
+checkout_dat$return43 <- extract_and_binary(checkout_dat, "I prefer my agency office", checkout_dat$return4)
+checkout_dat$return44 <- extract_and_binary(checkout_dat, "Im uncomfortable working around others", checkout_dat$return4)
+checkout_dat$return45 <- extract_and_binary(checkout_dat, "There was inadequate meeting space", checkout_dat$return4)
+checkout_dat$return46 <- extract_and_binary(checkout_dat, "I have privacy and security concerns", checkout_dat$return4)
+checkout_dat$return47 <- extract_and_binary(checkout_dat, "It is burdensome to bring my things each time eg equipment materials supplies personal items", checkout_dat$return4)
+checkout_dat$return48 <- extract_and_binary(checkout_dat, "The location is inconvenient", checkout_dat$return4)
+checkout_dat$return49 <- extract_and_binary(checkout_dat, "I require access to agencydedicated wifi eg cannot share guest wifi", checkout_dat$return4)
+checkout_dat$return410 <- extract_and_binary(checkout_dat, "Parking is too costlyinconvenient specify amount", checkout_dat$return4)
+
+```
+
+
+
+```{r return4 aggregate figures}
+#clean up the data structure to create the figure
+return4ag_dat <- checkout_dat %>%
+  select(return41:return410) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(return41:return410), names_to = "return4answer",
+               values_to = "count") %>%
+  group_by(return4answer) %>%
+  summarise(sum = sum(count))
+
+return4ag_dat
+return4ag_dat$perc <- round(return4ag_dat$sum/sum(return4ag_dat$sum) * 100)  
+return4ag_dat <- return4ag_dat %>%
+  mutate(return4answer = case_when(
+    return4answer == "return41" ~ "No obstacles/barriers", 
+    return4answer =="return42"~"Prefer home office", 
+    return4answer =="return43" ~ "Prefer agency office", 
+    return4answer =="return44" ~ "Uncomfortable working around others", 
+    return4answer =="return45" ~ "Inadequate meeting space", 
+    return4answer =="return46" ~ "Privacy & security concerns",
+    return4answer =="return47" ~ "Burdensome to bring things each time",
+    return4answer =="return48" ~ "Location is inconvenient",
+    return4answer =="return49" ~ "Require agency-dedicated wifi",
+    return4answer =="return410" ~ "Parking too costly / inconvenient"
+    )) #this just fixes the labels on the plots
+unique(return4ag_dat$return4answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+return4fig_ag <- ag_plot(return4ag_dat, return4ag_dat$return4answer, "Which potential obstacles might keep you from personally using Federal Coworking? ", "")
+return4fig_ag
+ggsave(return4fig_ag, 
+       filename = "return4fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+
+```{r return 6}
+unique(checkout_dat$return6)
+
+#response options 
+#Not applicable/overall experience met or exceeded my expectations
+# Better access to onsite or nearby childcare
+# Better meeting and video conferencing equipment
+# More printers, scanners, and copy machines
+# Better managed kitchens (e.g., coffee)
+# Dedicated space to leave personal items (e.g., equipment, materials, supplies)
+# More programming activities (e.g., events, lectures, training)
+# 
+#
+checkout_dat$return6 <- str_remove_all(checkout_dat$return6, "[:punct:]")
+checkout_dat$return6 <- str_squish(checkout_dat$return6)
+checkout_dat$return61 <- extract_and_binary(checkout_dat, "Not applicableoverall experience met or exceeded my expectations", checkout_dat$return6)
+checkout_dat$return62 <- extract_and_binary(checkout_dat, "Better access to onsite or nearby childcare", checkout_dat$return6)
+checkout_dat$return63 <- extract_and_binary(checkout_dat, "Better meeting and video conferencing equipment", checkout_dat$return6)
+checkout_dat$return64 <- extract_and_binary(checkout_dat, "More printers scanners and copy machines", checkout_dat$return6)
+checkout_dat$return65 <- extract_and_binary(checkout_dat, "Better managed kitchens eg coffee", checkout_dat$return6)
+checkout_dat$return66 <- extract_and_binary(checkout_dat, "Dedicated space to leave personal items eg equipment materials supplies", checkout_dat$return6)
+checkout_dat$return67 <- extract_and_binary(checkout_dat, "More programming activities eg events lectures training", checkout_dat$return6)
+
+```
+
+
+```{r return4 aggregate figures}
+#clean up the data structure to create the figure
+return6ag_dat <- checkout_dat %>%
+  select(return61:return67) %>% #select variables I just created above and make them separate variables and binary 
+  pivot_longer(c(return61:return67), names_to = "return6answer",
+               values_to = "count") %>%
+  group_by(return6answer) %>%
+  summarise(sum = sum(count))
+
+return6ag_dat
+return6ag_dat$perc <- round(return6ag_dat$sum/sum(return6ag_dat$sum) * 100)  
+return6ag_dat <- return6ag_dat %>%
+  mutate(return6answer = case_when(
+    return6answer == "return61" ~ "NA - exceeded expectations", 
+    return6answer =="return62"~"Better access to childcare", 
+    return6answer =="return63" ~ "Better meeting and video equipment", 
+    return6answer =="return64" ~ "More printers, scanners, and copy machines", 
+    return6answer =="return65" ~ "Better managed kitchens", 
+    return6answer =="return66" ~ "Dedicated space to leave personal items",
+    return6answer =="return67" ~ "More programming activities"
+    )) #this just fixes the labels on the plots
+unique(return6ag_dat$return6answer) #check that it worked (there shouldn't be any NAs)
+
+#creating the plot:
+return6fig_ag <- ag_plot(return6ag_dat, return6ag_dat$return6answer, "What are the top 3 enhanced amenities and services that would\nmake Federal Coworking more attractive?", "")
+return6fig_ag
+ggsave(return6fig_ag, 
+       filename = "return6fig_ag.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+

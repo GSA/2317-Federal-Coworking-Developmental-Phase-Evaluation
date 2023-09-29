@@ -1,0 +1,1363 @@
+---
+title: "federal-coworking-pref-workstyle-initial-survey"
+output: pdf_document
+date: "2023-09-03"
+---
+
+```{r setup}
+
+
+#this is the only part you need to change whenever you are updating the figures
+#first, make sure you set your work directory to where your files are coming from and where they will be saved. 
+#then all you need to do is load the new data set of the initial survey results, ensuring the variable names have not changed
+#
+setwd("G:/Shared drives/GSA Evaluation Division/Projects/1.0 Real Estate Solutions (LQ1)/2317 Federal Coworking Developmental Phase Evaluation/04. Analysis/9.12.23 Data Download")
+#set working directory, where all the files are coming from and where they will be saved.
+
+##load initial survey data 
+initial_dat <- readxl::read_xlsx("G:/Shared drives/GSA Evaluation Division/Projects/1.0 Real Estate Solutions (LQ1)/2317 Federal Coworking Developmental Phase Evaluation/04. Analysis/9.12.23 Data Download/Fed Cowork INITIAL_September 12, 2023_text.xlsx")
+#check first six rows to make sure everything looks right
+head(initial_dat)
+
+#the first row is a repeat of the column names, so we remove that first row:
+initial_dat <- initial_dat[-1,]
+
+
+##if you need to only work with one sheet from an entire excel workbook, then this is the sample code you would use:
+
+## initial_dat_dpd <- readxl::read_xlsx("G:/Shared drives/GSA Evaluation Division/Projects/1.0 Real Estate Solutions (LQ1)/2317 Federal Coworking Developmental Phase Evaluation/04. Analysis/8.31.23 Data Download/DPD_spreadsheet.xlsx", sheet = "Initial Survey")
+
+```
+
+
+```{r load packages}
+library(readr)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(stringr)
+library(forcats)
+library(googlesheets4)
+library(ggthemes)
+library(cowplot)
+library(ggrepel)
+```
+
+```{r ws2 preferences data clean and aggregate}
+#same but with the preferences, using ws2
+unique(initial_dat$ws2)
+initial_dat <- initial_dat %>%
+  mutate(pref_ws = case_when(
+    ws2 == "Preference for a combination of distributed (remote) work and in-person work" ~ "Hybrid",
+    ws2 == "Preference toward distributed (remote) work" ~ "Remote",
+    ws2 == "Preference toward in-person work" ~ "In-Person",
+    ws2 == "No preference or unsure" ~ "Unsure"
+  ))
+unique(initial_dat$pref_ws) #checking it worked
+
+initial_dat <- initial_dat %>%
+  drop_na(pref_ws)
+
+#creating separate data frame for plot
+ws2figure_dat <-  as.data.frame(count(initial_dat, pref_ws))
+ws2figure_dat$perc <- ws2figure_dat$n/sum(ws2figure_dat$n) 
+
+ws2figure_dat
+
+
+#pie chart
+
+ws2figure_dat <- ws2figure_dat %>%
+  mutate(csum = rev(cumsum(rev(perc))),
+         pos = perc/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), perc/2, pos))
+
+ws2figure_dat <- ws2figure_dat %>%
+  mutate(labels = paste0(round((n/ sum(n)) * 100, 1), "%", " (", n, ") "))
+ws2figure_dat
+
+ws2figure_pie <- ggplot(ws2figure_dat, aes(x="", y=perc, fill=reorder(pref_ws, perc))) +
+  geom_col(width = 1) +
+  coord_polar(theta = "y") +
+   theme_void() +
+ labs(title = "Preference on Work Style") +
+  theme(plot.title = element_text(size = 16, face = "bold", color = "black", vjust = -1), plot.title.position = "plot") +
+  theme(legend.text = element_text(size = 12, color = "black"), legend.title = element_blank()) +
+  scale_fill_manual(values =c("#F7941E","#A6CE39","#0FAFFF","#A3238E")) +
+  geom_label_repel(aes(y = pos, label = labels), size = 4.5, nudge_x = 1, show.legend = FALSE) +  
+  guides(fill = guide_legend(title = "")) 
+ 
+ws2figure_pie
+
+
+ggsave(ws2figure_pie, 
+       filename = "ws2figure-pie.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")  
+```
+
+
+```{r clean up for ws1, actual work style questions}
+colnames(initial_dat)
+
+#no duplciates 
+length(unique(initial_dat$ResponseId))
+#should expect to have this many responses 
+
+#exploring workstyle variables
+unique(initial_dat$ws1_1)
+tail(initial_dat$ws1_1)
+unique(initial_dat$ws1_2)
+unique(initial_dat$ws1_3)
+unique(initial_dat$ws1_4)
+unique(initial_dat$ws1_4_TEXT)
+tail(initial_dat)
+
+#convert character to numeric
+initial_dat$ws1_1 <- as.numeric(initial_dat$ws1_1)
+initial_dat$ws1_2 <- as.numeric(initial_dat$ws1_2)
+initial_dat$ws1_3 <- as.numeric(initial_dat$ws1_3)
+initial_dat$ws1_4 <- as.numeric(initial_dat$ws1_4)
+
+#we can just use one of these to understand styles, using home to create the personas, ws1_1, but we will check the validity. 
+
+#need to add travel and home together 
+
+initial_dat$ws_2_and_3 <- (initial_dat$ws1_2) + (initial_dat$ws1_3)
+length(initial_dat$ws1_2)
+length(initial_dat$ws_2_and_3) #check the lengths are the same
+unique(initial_dat$ws_2_and_3) #this is now the agency office days, people who are not working remote
+unique(initial_dat$ws1_4) #only 76 are other
+initial_dat <- initial_dat %>%
+  mutate(actual_ws = case_when(
+    ws_2_and_3 == 0.0 ~ "Majority Remote",
+    ws_2_and_3 == 1.0 ~ "Majority Remote",
+    ws_2_and_3 == 1.5 ~ "Majority Remote",
+    ws_2_and_3 == 2.0 ~ "Majority Remote",
+    ws_2_and_3 == 3.0 ~ "Combination",
+    ws_2_and_3 == 4.0 ~ "Combination",
+    ws_2_and_3 == 5.0 ~ "Combination",
+    ws_2_and_3 == 6.0 ~ "Combination",
+   ws_2_and_3 == 7.0 ~ "Combination",
+    ws_2_and_3 == 8.0 ~ "Majority In-Person",
+    ws_2_and_3 == 9.0 ~ "Majority In-Person",
+  ws_2_and_3 == 9.5 ~ "Majority In-Person",
+    ws_2_and_3 == 10.0 ~ "Majority In-Person"))
+
+initial_dat$actual_ws <- replace_na(initial_dat$actual_ws, "Did Not Answer")
+unique(initial_dat$actual_ws) #did it work?
+
+
+#checking how many for each now:
+initial_dat %>% filter(actual_ws == "Majority Remote")
+initial_dat %>% filter(actual_ws == "Majority In-Person")
+initial_dat %>% filter(actual_ws == "Combination")
+
+
+```
+
+```{r compare actual to pref figure}
+
+act_pref_figure_dat <-  as.data.frame(count(initial_dat, actual_ws, pref_ws))
+act_pref_figure_dat$perc <- act_pref_figure_dat$n/sum(act_pref_figure_dat$n)
+act_pref_figure_dat <- act_pref_figure_dat %>%
+  mutate(pref_ws = case_when(
+    pref_ws == "Unsure" ~ "Unsure",
+    pref_ws == "Hybrid" ~ "Prefer Hybrid",
+    pref_ws == "In-Person" ~ "Prefer In-Person",
+    pref_ws == "Remote" ~ "Prefer Remote"
+  )) %>%
+  mutate(actual_ws = case_when(
+    actual_ws == "Combination" ~ "Currenty Working Hybrid",
+    actual_ws == "Majority Remote" ~ "Currently Working Mostly Remote",
+    actual_ws == "Majority In-Person" ~ "Currently Working Mostly In-Person",
+    actual_ws == "Did Not Answer" ~ "Did Not Answer"
+  ))
+act_pref_figure_dat$pref_ws <- factor(act_pref_figure_dat$pref_ws, levels = c("Prefer Hybrid","Prefer Remote", "Prefer In-Person","Unsure"))
+act_pref_figure_dat
+act_pref_figure <- 
+  act_pref_figure_dat %>% 
+  filter(actual_ws != "Did Not Answer") %>%
+  group_by(actual_ws)%>% 
+  mutate(freq = n / sum(n) * 100) %>% 
+  ggplot(aes(fill = pref_ws, y = freq, x =str_wrap(actual_ws, 20))) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Do you have a personal preference for remote v. in-person work?") +
+  xlab("Work Assignment") +
+  ylab("Percent of Respondents by Work Assignment") +
+  theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 10), legend.justification = "left", legend.direction = "horizontal") +
+  theme(plot.title = element_text(hjust = -0.5, face = "bold", size = 13, colour = "black"), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white")) +
+  scale_fill_manual(values = c("#003C71", "#A3238E","#0FAFFF", "#0579BD"), limits = c("Prefer Hybrid","Prefer Remote", "Prefer In-Person","Unsure")) +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.7),vjust =1)) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = n), position = position_dodge(.9), vjust = -0.05, color = "black", size = 3)
+
+
+act_pref_figure
+ggsave(act_pref_figure, 
+       filename = "actual-v-pref-comparison.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+
+
+```{r initial data clean up for a1}
+#now working with the variables that will output to the figures 
+
+#first one: a1
+unique(initial_dat$a1)
+#response options:
+#Large conference & auditorium space
+#Shared space for drop-in use
+#Dedicated space within coworking that can be locked and sealed for my team
+
+#pulling these to create variables for each option
+initial_dat$a1_large <- str_extract(initial_dat$a1, "Large conference & auditorium space")
+
+initial_dat$a1_share <- str_extract(initial_dat$a1, "Shared space for drop-in use")
+initial_dat$a1_dedicate <- str_extract(initial_dat$a1, "Dedicated space within coworking that can be locked and sealed for my team")
+
+#checking that it matches
+initial_dat %>%
+  select(a1, a1_share, a1_dedicate, a1_large)
+
+#replace NA with 0 and create binary variables
+initial_dat$a1_large <- replace_na(initial_dat$a1_large, "0")
+initial_dat <- initial_dat %>% mutate(a1_large = case_when(
+  a1_large == "Large conference & auditorium space" ~ 1,
+  a1_large == "0" ~ 0
+))
+
+initial_dat$a1_dedicate <- replace_na(initial_dat$a1_dedicate, "0")
+initial_dat <- initial_dat %>% mutate(a1_dedicate = case_when(
+  a1_dedicate == "Dedicated space within coworking that can be locked and sealed for my team" ~ 1,
+  a1_dedicate == "0" ~ 0
+))
+
+initial_dat$a1_share <- replace_na(initial_dat$a1_share, "0")
+initial_dat <- initial_dat %>% mutate(a1_share = case_when(
+  a1_share == "Shared space for drop-in use" ~ 1,
+  a1_share == "0" ~ 0
+))
+```
+
+
+```{r a1 figures pref}
+#creating new data frame for the plots
+
+a1figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(a1_dedicate, a1_large, a1_share, pref_ws) %>%
+  pivot_longer(c(a1_dedicate, a1_large, a1_share), names_to = "a1answer",
+               values_to = "count")  %>%
+  group_by(pref_ws, a1answer) %>%
+  summarise(sum = sum(count))
+#creating percent columns
+a1figure_dat$perc1 <- round(a1figure_dat$sum/sum(a1figure_dat$sum) * 100)  
+a1figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       a1figure_dat$perc1),
+                               "%")
+
+#make the percent in each category 
+a1figure_dat <- a1figure_dat %>%
+  mutate(a1answer = case_when(
+    a1answer == "a1_dedicate" ~"Dedicated space within coworking that can be locked and sealed for my team",
+    a1answer == "a1_large" ~ "Large conference & auditorium space",
+    a1answer == "a1_share" ~ "Shared space for drop-in use"
+  ))
+
+  
+a1figure_pref <- 
+  a1figure_dat %>% 
+  filter(pref_ws != "Did Not Answer") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>% 
+  ggplot(aes(fill = reorder(a1answer, -sum), y = freq, x = reorder(pref_ws, -freq))) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Which types of space do you envision your organization using?") +
+  xlab("Work Assignment") +
+  ylab("Percent of Respondents by Work Stye") +
+  theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 10), legend.justification = "left") +
+  theme(
+    plot.title = element_text(hjust = -0.5, face = "bold",
+      size = 13, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white")) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD"), labels = function(x) str_wrap(x, 20)) +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1)) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust =2, color = "white", size = 5) 
+
+
+print(a1figure_pref)
+
+ggsave(a1figure_pref, 
+       filename = "a1figure-pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+
+
+```{r clean up a2}
+unique(initial_dat$a2)
+
+#response options:
+#"Small meetings (2-9 people)"
+#"Large meetings (10-20 people)"
+#"Large conferences and/or trainings (20+ people)"
+#"Individual focus work"
+#"Video conferencing and/or calls"
+#"Social gatherings, networking, seasonal events"
+#"Informal casual collaboration"
+#"Other"
+
+initial_dat$a2sm <- str_extract(initial_dat$a2, "Small meetings \\(2-9 people\\)")
+initial_dat$a2sm <- str_remove_all(initial_dat$a2sm, "[:punct:]") #remove punctuation so I can use mutate() function later on
+
+initial_dat <- initial_dat %>% mutate(a2sm = case_when(
+  a2sm == "Small meetings 29 people" ~ 1 #punctuation removed or it won't change the value
+))
+initial_dat$a2sm <- replace_na(initial_dat$a2sm, 0)
+unique(initial_dat$a2sm) #check 
+
+initial_dat$a2large10 <- str_extract(initial_dat$a2, "Large meetings \\(10-20 people\\)")
+initial_dat$a2large10 <- str_remove_all(initial_dat$a2large10, "[:punct:]") #remove punctuation so I can use mutate() function later on
+
+initial_dat <- initial_dat %>% mutate(a2large10 = case_when(
+  a2large10 == "Large meetings 1020 people" ~ 1 #punctuation removed or it won't change the value
+))
+initial_dat$a2large10 <- replace_na(initial_dat$a2large10, 0)
+unique(initial_dat$a2large10) #check 
+
+initial_dat$a2large21 <- str_extract(initial_dat$a2, "Large conferences and[:punct:]or trainings \\(20[:symbol:] people\\)")
+unique(initial_dat$a2large21)
+initial_dat$a2large21 <- str_remove_all(initial_dat$a2large21, "[:punct:]") #remove punctuation so I can use mutate() function later on
+initial_dat$a2large21 <- str_remove_all(initial_dat$a2large21, "[:symbol:]")
+initial_dat <- initial_dat %>% mutate(a2large21 = case_when(
+  a2large21 == "Large conferences andor trainings 20 people" ~ 1 #punctuation removed or it won't change the value
+))
+initial_dat$a2large21 <- replace_na(initial_dat$a2large21, 0)
+unique(initial_dat$a2large21) #check 
+
+initial_dat$a2indiv <- str_extract(initial_dat$a2, "Individual focus work")
+unique(initial_dat$a2indiv)
+initial_dat <- initial_dat %>% mutate(a2indiv = case_when(
+  a2indiv == "Individual focus work" ~ 1 
+))
+initial_dat$a2indiv <- replace_na(initial_dat$a2indiv, 0)
+unique(initial_dat$a2indiv) #check 
+
+initial_dat$a2social <- str_extract(initial_dat$a2, "Social gatherings, networking, seasonal events")
+unique(initial_dat$a2social)
+initial_dat <- initial_dat %>% mutate(a2social = case_when(
+  a2social == "Social gatherings, networking, seasonal events" ~ 1 
+))
+initial_dat$a2social <- replace_na(initial_dat$a2social, 0)
+unique(initial_dat$a2social) #check 
+
+initial_dat$a2informal <- str_extract(initial_dat$a2, "Informal casual collaboration")
+unique(initial_dat$a2informal)
+initial_dat <- initial_dat %>% mutate(a2informal = case_when(
+  a2informal == "Informal casual collaboration" ~ 1 
+))
+initial_dat$a2informal <- replace_na(initial_dat$a2informal, 0)
+unique(initial_dat$a2informal) #check 
+
+
+initial_dat$a2vid <- str_extract(initial_dat$a2, "Video conferencing and[:punct:]or calls")
+unique(initial_dat$a2vid)
+initial_dat$a2vid <- str_remove_all(initial_dat$a2vid, "[:punct:]")
+initial_dat <- initial_dat %>% mutate(a2vid = case_when(
+  a2vid == "Video conferencing andor calls" ~ 1 #punctuation removed or it won't change the value
+))
+initial_dat$a2vid <- replace_na(initial_dat$a2vid, 0)
+unique(initial_dat$a2vid) #check 
+
+initial_dat$a2other <- str_extract(initial_dat$a2, "Other")
+initial_dat <- initial_dat %>% mutate(a2other = case_when(
+  a2other == "Other" ~ 1 
+))
+initial_dat$a2other <- replace_na(initial_dat$a2other, 0)
+unique(initial_dat$a2other) #check 
+
+
+```
+
+
+```{r a2 figure pref}
+#creating new dataset for the plots
+
+a2figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(a2sm, a2large10, a2large21, a2vid, a2indiv, a2informal, a2social, a2other, pref_ws) %>%
+  pivot_longer(c(a2sm, a2large10, a2large21, a2vid, a2indiv, a2informal, a2social, a2other), names_to = "a2answer",
+               values_to = "count") %>%
+  group_by(pref_ws, a2answer) %>%
+  summarise(sum = sum(count))
+#creating percent columns
+a2figure_dat$perc1 <- round(a2figure_dat$sum/sum(a2figure_dat$sum) * 100)  
+a2figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       a2figure_dat$perc1),"%")
+a2figure_dat<- a2figure_dat %>%
+  mutate(a2answer = case_when(
+    a2answer == "a2indiv"~"Individual focus work",
+    a2answer =="a2informal" ~"Informal casual collaboration",
+                                a2answer == "a2large10"~"Large meetings (10-20 people)",
+                               a2answer ==   "a2large21"~"Large conferences and/or trainings (20+ people)",
+                                a2answer == "a2other"~ "Other",
+                               a2answer == "a2sm"~  "Small meetings (2-9 people)", 
+                                a2answer == "a2social"~"Social gatherings, networking, seasonal events",
+                                a2answer == "a2vid"~"Video conferencing and/or calls"))
+
+
+#plot by category 
+#make the percent in each category 
+a2figure_dat %>% 
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100)) 
+
+a2figure_pref <- 
+  a2figure_dat %>% 
+  filter(pref_ws != "Did Not Answer") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100)) %>% 
+  ggplot(aes(fill = reorder(a2answer,-sum), y = freq, x = reorder(pref_ws, -freq))) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "What do you envision your organization doing in a Federal Coworking space?") +
+  xlab("Work Assignment") +
+  ylab("Percent of Respondents by Work Assignment") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 7), legend.justification = "left", legend.direction  = "horizontal", legend.key.size = unit(0.25, "cm")) +
+  theme(
+    plot.title = element_text(hjust = -0.25, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236"), labels = function(x) str_wrap(x, 20))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.5, color = "black", size = 3)
+a2figure_pref
+ggsave(a2figure_pref, 
+       filename = "a2figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+```
+
+
+
+
+```{r data clean a3}
+#response options: 
+#"Reduce underutilized office space","Allow for greater operational flexibility","Support public facing services","Access equipment/supplies","Develop and sustain organizational culture","Attract and retain talent","Train and develop employees","Facilitate meetings and team collaboration","Support inter-agency collaboration","Improve performance/productivity","Increase innovation","Provide space for traveling employees to touch down","Other"
+
+unique(initial_dat$a3)
+
+#my fucntion will do this:
+#initial_dat$a3reduce <- str_extract(initial_dat$a3, "Reduce underutilized office space")
+#initial_dat <- initial_dat %>% mutate(a3reduce = case_when(
+#  a3reduce == "Reduce underutilized office space" ~ 1 
+#))
+#initial_dat$a3reduce <- replace_na(initial_dat$a3reduce, 0)
+#unique(initial_dat$a3reduce) #check 
+#writing a function to extract all the different response options and turn them into binary variables, similar to what's above but less copying and pasting
+extract_and_binary <- function(dat, x, a) {
+  y <- str_extract(a, x)
+  y <- case_when(y == x ~ 1)
+  y <- replace_na(y, 0)
+  return(y)
+}
+#create new variable names
+initial_dat$a3red <- extract_and_binary(initial_dat, "Reduce underutilized office space", initial_dat$a3)
+initial_dat$a3allow <- extract_and_binary(initial_dat, "Allow for greater operational flexibility", initial_dat$a3)
+initial_dat$a3support <- extract_and_binary(initial_dat, "Support public facing services", initial_dat$a3)
+initial_dat$a3access <- extract_and_binary(initial_dat, "Access equipment/supplies", initial_dat$a3)
+initial_dat$a3dev <- extract_and_binary(initial_dat, "Develop and sustain organizational culture", initial_dat$a3)
+initial_dat$a3attr <- extract_and_binary(initial_dat, "Attract and retain talent", initial_dat$a3)
+initial_dat$a3train <- extract_and_binary(initial_dat, "Train and develop employees", initial_dat$a3)
+initial_dat$a3fac <- extract_and_binary(initial_dat, "Facilitate meetings and team collaboration", initial_dat$a3)
+initial_dat$a3inter <- extract_and_binary(initial_dat, "Support inter-agency collaboration", initial_dat$a3)
+initial_dat$a3impro <- extract_and_binary(initial_dat, "Improve performance/productivity", initial_dat$a3)
+initial_dat$a3inno <- extract_and_binary(initial_dat, "Increase innovation", initial_dat$a3)
+initial_dat$a3prov <- extract_and_binary(initial_dat, "Provide space for traveling employees to touch down", initial_dat$a3)
+
+
+
+```
+
+```{r a3 figure pref}
+#creating new dataset for the plots
+
+a3figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(a3red, a3allow, a3support, a3access, a3dev, a3attr, a3train, a3fac, a3inter, a3impro, a3inno, a3prov, pref_ws) %>%
+  pivot_longer(c(a3red, a3allow, a3support, a3access, a3dev, a3attr, a3train, a3fac, a3inter, a3impro, a3inno, a3prov), names_to = "a3answer",
+               values_to = "count") %>%
+  group_by(pref_ws, a3answer) %>%
+  summarise(sum = sum(count))
+a3figure_dat
+
+#creating percent columns
+a3figure_dat$perc1 <- round(a3figure_dat$sum/sum(a3figure_dat$sum) * 100)  
+a3figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       a3figure_dat$perc1),"%")
+
+a3figure_dat <- a3figure_dat %>%
+  mutate(a3answer = case_when(
+    a3answer == "a3red" ~ "Reduce underutilized office space",
+    a3answer == "a3allow" ~ "Allow for greater operational flexibility", 
+    a3answer =="a3support" ~ "Support public facing services",
+    a3answer =="a3access" ~ "Access equipment",
+    a3answer == "a3dev" ~ "Develop and sustain organizational culture",
+    a3answer == "a3attr" ~ "Attract and retain talent",
+    a3answer =="a3train" ~ "Train and develop employees",
+    a3answer =="a3fac" ~  "Facilitate meetings and team collaboration",
+    a3answer == "a3inter" ~ "Support inter- agency collaboration",
+    a3answer =="a3impro" ~ "Improve performance",
+    a3answer =="a3inno" ~ "Increase innovation",
+    a3answer =="a3prov" ~ "Provide space for traveling employees"
+  ))
+
+unique(a3figure_dat$a3answer)
+
+
+#plot by category 
+#make the percent in each category 
+a3figure_dat %>% 
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100)) 
+
+a3figure_pref <- 
+  a3figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100))%>%
+  ggplot(aes(fill = reorder(a3answer,-sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "What are your organization's goals for considering Federal Coworking space?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 7), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = -0.25, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236", "pink", "orange","blue", "purple"), labels = function(x) str_wrap(x, 20))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.05, color = "black", size = 3)
+a3figure_pref
+ggsave(a3figure_pref, 
+       filename = "a3figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+
+```{r data clean a4}
+
+#Change management challenges (e.g., lack of organizational support)
+#Inadequate data to evaluate the costs and benefits of adopting Federal Coworking
+#Unions / Collective Bargaining Agreements (CBAs)
+#Alternative office space preferred (agency office)
+#Home office space preferred
+#Privacy and security concerns sharing space
+#Agency return to office plans
+#Concern that GSA will abandon the coworking program
+#Other 
+#
+#
+##Change management challenges eg lack of organizational support
+#Inadequate data to evaluate the costs and benefits of adopting Federal Coworking
+#UnionsCollective Bargaining Agreements CBAs
+#Alternative office space preferred agency office
+#Home office space preferred
+#Privacy and security concerns sharing space
+#Agency return to office plans
+#Concern that GSA will abandon the coworking program
+#Other 
+#
+#
+
+initial_dat$a4 <- str_remove_all(initial_dat$a4, "[:punct:]") #can cause problems later so removing it now
+unique(initial_dat$a4)
+
+#using function I created:
+initial_dat$a4change <- extract_and_binary(initial_dat, "Change management challenges eg lack of organizational support", initial_dat$a4)
+initial_dat$a4inad <- extract_and_binary(initial_dat, "Inadequate data to evaluate the costs and benefits of adopting Federal Coworking", initial_dat$a4)
+initial_dat$a4unions <- extract_and_binary(initial_dat, "UnionsCollective Bargaining Agreements CBAs", initial_dat$a4)
+initial_dat$a4alt <- extract_and_binary(initial_dat, "Alternative office space preferred agency office", initial_dat$a4)
+initial_dat$a4home <- extract_and_binary(initial_dat, "Home office space preferred", initial_dat$a4)
+initial_dat$a4priv <- extract_and_binary(initial_dat, "Privacy and security concerns sharing space", initial_dat$a4)
+initial_dat$a4agen <- extract_and_binary(initial_dat, "Agency return to office plans", initial_dat$a4)
+initial_dat$a4concern <- extract_and_binary(initial_dat, "Concern that GSA will abandon the coworking program", initial_dat$a4)
+initial_dat %>%
+  select(a4change, a4inad, a4unions, a4alt, a4home, a4priv, a4agen, a4concern)
+
+```
+
+
+
+
+
+```{r a4 figures}
+#creating new dataset for the plots
+
+a4figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(a4change, a4inad, a4unions, a4alt, a4home, a4priv, a4agen, a4concern, pref_ws) %>%
+  pivot_longer(c(a4change, a4inad, a4unions, a4alt, a4home, a4priv, a4agen, a4concern), names_to = "a4answer",
+               values_to = "count") %>%
+  group_by(pref_ws, a4answer) %>%
+  summarise(sum = sum(count))
+a4figure_dat <- a4figure_dat %>%
+  mutate(a4answer = case_when(
+    a4answer == "a4change" ~ "Change management challenges", 
+    a4answer =="a4inad"~"Inadequate data to evaluate", 
+    a4answer =="a4unions" ~ "Collective Bargaining Agreements", 
+    a4answer =="a4alt" ~ "Alternative office space preferred", 
+    a4answer =="a4home" ~ "Home office space preferred", 
+    a4answer =="a4priv" ~ "Privacy and security concerns sharing space", 
+    a4answer =="a4agen" ~ "Agency return to office plans",
+    a4answer =="a4concern" ~ "Concern that GSA will abandon the coworking program"
+  ))
+ 
+unique(a4figure_dat$a4answer)
+#creating percent columns
+a4figure_dat$perc1 <- round(a4figure_dat$sum/sum(a4figure_dat$sum) * 100)  
+a4figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       a4figure_dat$perc1),"%")
+
+
+
+
+#plot by category 
+#make the percent in each category 
+a4figure_dat %>% 
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100)) 
+
+a4figure_pref <- 
+  a4figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100))%>%
+  ggplot(aes(fill = reorder(a4answer, -sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "What are the major obstacles to Federal Coworking adoption for your organization?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 7), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 1, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236"), labels = function(x) str_wrap(x, 22))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = 1.1, color = "white", size = 3)
+a4figure_pref
+ggsave(a4figure_pref, 
+       filename = "a4figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+
+
+```
+
+
+
+```{r a5 figures}
+#plot by category:
+#
+a5figure_dat <- count(initial_dat, a5, pref_ws)
+a5figure_dat
+a5figure_dat <- a5figure_dat %>% 
+  drop_na(a5) %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(n / sum(n) * 100)) 
+a5figure_dat
+
+a5figure_pref <- 
+  a5figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(n / sum(n) * 100))%>%
+  ggplot(aes(fill = reorder(str_wrap(a5, 30),-n), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Does your organization have an interest in co-locating with other Federal entities?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 8), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 1, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 12, color = "black", hjust = 0), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236"))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = n), position = position_dodge(.9), vjust = 1.1, color = "white", size = 4)
+a5figure_pref
+ggsave(a5figure_pref, 
+       filename = "a5figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+```{r ws3 data clean}
+unique(initial_dat$ws3)
+
+#ws3 response options:
+#It is required by leadership and/or agency policy
+#If I have in-person meetings
+#Whether most of my team will be working in the office that day
+#I have mentorship and development opportunities in the office
+#I feel more productive in the office
+#I feel more creative in the office
+#I have access to office equipment, supplies, and technology (e.g., screens, reliable wifi, printers, copiers) in the office.
+#I have access to office food & beverages (e.g., coffee, snacks) for purchase in the office
+#I have access to child care within and/or near the office
+#I feel better work-life separation when I go to the office
+#I can have more social interaction in the office
+#I have a reasonable commute to the office
+#I have access to other establishments (e.g., restaurants, gym) near the office
+#
+##It is required by leadership andor agency policy
+#If I have inperson meetings
+#Whether most of my team will be working in the office that day
+#I have mentorship and development opportunities in the office
+#I feel more productive in the office
+#I feel more creative in the office
+#I have access to office equipment supplies and technology eg screens reliable wifi printers copiers in the office
+#I have access to office foodbeverages eg coffee snacks for purchase in the office
+#I have access to child care within andor near the office
+#I feel better worklife separation when I go to the office
+#I can have more social interaction in the office
+#I have a reasonable commute to the office
+#I have access to other establishments eg restaurants gym near the office
+#get rid of punctuation which causes probelms later
+initial_dat$ws3 <- str_remove_all(initial_dat$ws3, "[:punct:]")
+
+initial_dat$ws3req <- extract_and_binary(initial_dat, "It is required by leadership andor agency policy", initial_dat$ws3)
+initial_dat$ws3inpers <- extract_and_binary(initial_dat, "If I have inperson meetings", initial_dat$ws3)
+initial_dat$ws3most <- extract_and_binary(initial_dat, "Whether most of my team will be working in the office that day", initial_dat$ws3)
+initial_dat$ws3mentor <- extract_and_binary(initial_dat, "I have mentorship and development opportunities in the office", initial_dat$ws3)
+initial_dat$ws3prod <- extract_and_binary(initial_dat, "I feel more productive in the office", initial_dat$ws3)
+initial_dat$ws3creat <- extract_and_binary(initial_dat, "I feel more creative in the office", initial_dat$ws3)
+initial_dat$ws3equip <- extract_and_binary(initial_dat, "I have access to office equipment supplies and technology eg screens reliable wifi printers copiers in the office", initial_dat$ws3)
+initial_dat$ws3food <- extract_and_binary(initial_dat, "I have access to office foodbeverages eg coffee snacks for purchase in the office", initial_dat$ws3)
+initial_dat$ws3child <- extract_and_binary(initial_dat, "I have access to child care within andor near the office", initial_dat$ws3)
+initial_dat$ws3social <- extract_and_binary(initial_dat, "I can have more social interaction in the office", initial_dat$ws3)
+initial_dat$ws3commute <- extract_and_binary(initial_dat, "I have a reasonable commute to the office", initial_dat$ws3)
+initial_dat$ws3gym <- extract_and_binary(initial_dat, "I have access to other establishments eg restaurants gym near the office", initial_dat$ws3)
+initial_dat$ws3bal <- extract_and_binary(initial_dat, "I feel better worklife separation when I go to the office", initial_dat$ws3)
+
+initial_dat %>%
+  select(ws3req, ws3inpers, ws3most, ws3mentor, ws3prod, ws3creat, ws3equip, ws3food, ws3child, ws3social, ws3commute, ws3commute, ws3bal)
+```
+
+
+
+```{r ws3 figures}
+#creating new dataset for the plots
+
+ws3figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(ws3req, ws3inpers, ws3most, ws3mentor, ws3prod, ws3creat, ws3equip, ws3food, ws3child, ws3social, ws3commute, ws3commute, ws3bal, pref_ws) %>%
+  pivot_longer(c(ws3req, ws3inpers, ws3most, ws3mentor, ws3prod, ws3creat, ws3equip, ws3food, ws3child, ws3social, ws3commute, ws3commute, ws3bal), names_to = "ws3answer",
+               values_to = "count") %>%
+  group_by(pref_ws, ws3answer) %>%
+  summarise(sum = sum(count))
+ws3figure_dat
+#creating percent columns
+ws3figure_dat$perc1 <- ws3figure_dat$sum/sum(ws3figure_dat$sum) * 100  
+ws3figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       ws3figure_dat$perc1),"%")
+
+ws3figure_dat <- ws3figure_dat %>%
+  mutate(ws3answer = case_when(
+    ws3answer == "ws3req" ~"Required by leadership or policy",
+    ws3answer ==  "ws3inpers" ~ "In-person meetings",
+     ws3answer == "ws3most" ~ "Team will be working in the office",
+     ws3answer == "ws3mentor" ~"Mentorship and development opportunities",
+     ws3answer == "ws3prod" ~ "More productive in the office",
+     ws3answer == "ws3creat" ~"More creative in the office",
+     ws3answer == "ws3equip" ~"Access to equipment, supplies, & technology", 
+    ws3answer ==  "ws3food"~"Access to office food & beverages",
+    ws3answer ==  "ws3child" ~"Access to child care within and/or near the office",
+    ws3answer ==  "ws3bal" ~ "Better work-life separation",
+    ws3answer ==  "ws3social" ~"More social interaction",
+    ws3answer ==  "ws3commute" ~"Reasonable commute", 
+    ws3answer ==  "ws3gym" ~"Access to other establishments near the office"
+  ))
+unique(ws3figure_dat$ws3answer)
+
+
+#plot by category 
+#make the percent in each category 
+ws3figure_dat %>% 
+  group_by(pref_ws)%>% 
+  mutate(freq = round(sum / sum(sum) * 100)) 
+
+ws3figure_pref <- 
+  ws3figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>%
+  ggplot(aes(fill = reorder(ws3answer, -sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Which factors influence your decision to work in the office?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 7), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 0, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236", "pink", "orange","blue", "purple"), labels = function(x) str_wrap(x, 20))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.05, color = "black", size = 2)
+ws3figure_pref
+ggsave(ws3figure_pref, 
+       filename = "ws3figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+```{r ws4 data clean}
+unique(initial_dat$ws4)
+
+#ws4 response options:
+# I don’t have any challenges when traveling
+# Inconsistent WiFi when traveling
+# Difficult to access office equipment / supplies (e.g., printers, copiers) when traveling
+# Difficult to work without my second monitor when traveling
+# Difficult to securely store my work computer and other equipment when traveling
+# Difficult to find quiet space for concentrative work and calls when traveling
+# Difficult to find adequate space for meetings when traveling
+# Lonely / limited social interaction when traveling
+# Other 
+#
+
+
+
+initial_dat$ws4 <- str_remove_all(initial_dat$ws4, "[:punct:]")
+initial_dat$ws4 <- str_squish(initial_dat$ws4)
+unique(initial_dat$ws4)
+
+initial_dat$ws4
+initial_dat$ws4none <- extract_and_binary(initial_dat, "I dont have any challenges when traveling", initial_dat$ws4)
+unique(initial_dat$ws4none)
+initial_dat$ws4wifi <- extract_and_binary(initial_dat, "Inconsistent WiFi when traveling", initial_dat$ws4)
+unique(initial_dat$ws4wifi)
+initial_dat$ws4access <- extract_and_binary(initial_dat, "Difficult to access office equipment supplies eg printers copiers when traveling", initial_dat$ws4)
+initial_dat$ws4monitor <- extract_and_binary(initial_dat, "Difficult to work without my second monitor when traveling", initial_dat$ws4)
+initial_dat$ws4secure <- extract_and_binary(initial_dat, "Difficult to securely store my work computer and other equipment when traveling", initial_dat$ws4)
+initial_dat$ws4quiet <- extract_and_binary(initial_dat, "Difficult to find quiet space for concentrative work and calls when traveling", initial_dat$ws4)
+initial_dat$ws4aqed <- extract_and_binary(initial_dat, "Difficult to find adequate space for meetings when traveling", initial_dat$ws4)
+initial_dat$ws4lone <- extract_and_binary(initial_dat, "Lonelylimited social interaction when traveling", initial_dat$ws4)
+
+
+```
+
+```{r ws4 figures}
+#creating new dataset for the plots
+
+ws4figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(ws4none, ws4wifi, ws4access, ws4monitor, ws4secure, ws4quiet, ws4aqed, ws4lone, pref_ws) %>%
+  pivot_longer(c(ws4none, ws4wifi, ws4access, ws4monitor, ws4secure, ws4quiet, ws4aqed, ws4lone), names_to = "ws4answer",
+               values_to = "count") %>%
+  group_by(pref_ws, ws4answer) %>%
+  summarise(sum = sum(count))
+ws4figure_dat
+#creating percent columns
+ws4figure_dat$perc1 <- ws4figure_dat$sum/sum(ws4figure_dat$sum) * 100  
+ws4figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       ws4figure_dat$perc1),"%")
+
+ws4figure_dat <- ws4figure_dat %>%
+  mutate(ws4answer = case_when(
+ws4answer == "ws4none" ~ "No challenges",
+ws4answer == "ws4wifi" ~"Inconsistent WiFi", 
+ws4answer == "ws4access" ~ "Difficult to access office equipment/supplies", 
+ws4answer == "ws4monitor"~"Difficult to work without second monitor",
+ws4answer == "ws4secure" ~ "Difficult to securely store computer and equipment",
+ws4answer == "ws4quiet" ~ "Difficult to find quiet space",
+ws4answer == "ws4aqed" ~"Difficult to find adequate space for meetings",
+ws4answer == "ws4lone" ~ "Lonely / limited social interaction" ))
+
+
+
+#plot by category 
+#make the percent in each category 
+
+
+ws4figure_pref <- 
+  ws4figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>%
+  ggplot(aes(fill = reorder(ws4answer,-sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "What challenges do you experience when you are traveling for work?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 7), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = -0.25, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236", "pink", "orange","blue", "purple"), labels = function(x) str_wrap(x, 25))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.5, color = "black", size = 2)
+ws4figure_pref
+ggsave(ws4figure_pref, 
+       filename = "ws4figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+```{r ws5 data clean }
+
+#response options
+#It is required by leadership and/or agency policy
+# If I have limited and/or virtual meetings
+# Whether most of my team will be working remotely that day
+# I have more flexibility and freedom when I work from home
+# I feel more productive at home
+# I feel more creative at home
+# I have adequate equipment, supplies, and technology (e.g., screens, reliable wifi, printers, copiers) at home
+# I have better access to the food and beverages I like at home
+# I have access to child care within and/or near my home
+# I feel better work-life balance when I work at home
+# I can be more selective about my social interactions at home
+# I can eliminate the commute time when I work from home
+# I have access to other establishments (e.g., restaurants, gym) near the office
+
+initial_dat$ws5 <- str_remove_all(initial_dat$ws5, "[:punct:]")
+initial_dat$ws5 <- str_squish(initial_dat$ws5)
+
+initial_dat$ws5req <- extract_and_binary(initial_dat, "It is required by leadership andor agency policy", initial_dat$ws5)
+initial_dat$ws5virt <- extract_and_binary(initial_dat, "If I have limited andor virtual meetings", initial_dat$ws5)
+initial_dat$ws5most <- extract_and_binary(initial_dat, "Whether most of my team will be working remotely that day", initial_dat$ws5)
+initial_dat$ws5free <- extract_and_binary(initial_dat, "I have more flexibility and freedom when I work from home", initial_dat$ws5)
+initial_dat$ws5prod <- extract_and_binary(initial_dat, "I feel more productive at home", initial_dat$ws5)
+initial_dat$ws5creat <- extract_and_binary(initial_dat, "I feel more creative at home", initial_dat$ws5)
+initial_dat$ws5equip <- extract_and_binary(initial_dat, "I have adequate equipment supplies and technology eg screens reliable wifi printers copiers at home", initial_dat$ws5)
+initial_dat$ws5food <- extract_and_binary(initial_dat, "I have better access to the food and beverages I like at home", initial_dat$ws5)
+initial_dat$ws5child <- extract_and_binary(initial_dat, "I have access to child care within andor near my home", initial_dat$ws5)
+initial_dat$ws5bal <- extract_and_binary(initial_dat, "I feel better work-life balance when I work at home", initial_dat$ws5)
+initial_dat$ws5social <- extract_and_binary(initial_dat, "I can be more selective about my social interactions at home", initial_dat$ws5)
+initial_dat$ws5commute <- extract_and_binary(initial_dat, "I can eliminate the commute time when I work from home", initial_dat$ws5)
+initial_dat$ws5gym <- extract_and_binary(initial_dat, "I have access to other establishments eg restaurants gym near the office", initial_dat$ws5)
+```
+
+
+```{r ws5 figures}
+ws5figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(ws5req, ws5virt, ws5most,ws5free,ws5prod, ws5creat, ws5equip,ws5food,ws5child,ws5bal,ws5social,ws5commute,ws5gym, pref_ws) %>%
+  pivot_longer(c(ws5req, ws5virt, ws5most,ws5free,ws5prod, ws5creat, ws5equip,ws5food,ws5child,ws5bal,ws5social,ws5commute,ws5gym), names_to = "ws5answer",
+               values_to = "count") %>%
+  group_by(pref_ws, ws5answer) %>%
+  summarise(sum = sum(count))
+ws5figure_dat
+#creating percent columns
+ws5figure_dat$perc1 <- ws5figure_dat$sum/sum(ws5figure_dat$sum) * 100  
+ws5figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       ws5figure_dat$perc1),"%")
+
+ws5figure_dat <- ws5figure_dat %>%
+mutate(ws5answer = case_when(
+ws5answer == "ws5req" ~"Required by leadership or policy",
+ws5answer =="ws5virt" ~ "Limited or virtual meetings",
+ws5answer == "ws5most" ~"Most of my team will be working remotely",
+ws5answer =="ws5free"~"More flexibility and freedom",
+ws5answer =="ws5prod"~"More productive at home",
+ws5answer =="ws5creat" ~"More creative at home",
+ws5answer =="ws5equip"~"Adequate equipment, supplies, & technology at home",
+ws5answer =="ws5food"~"Access to the food and beverages",
+ws5answer =="ws5child"~"Access to child care",
+ws5answer =="ws5bal"~"Better work-life balance",
+ws5answer =="ws5social"~"More selective about my social interactions",
+ws5answer =="ws5commute"~"Eliminate the commute",
+ws5answer =="ws5gym"~"Access to other establishments"))
+
+
+
+#plot by category 
+#make the percent in each category 
+
+
+ws5figure_pref <- 
+  ws5figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>%
+  ggplot(aes(fill = reorder(ws5answer, -sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Which factors influence your decision to work from home?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 6), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = -0.25, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236", "pink", "#F7643F","blue", "purple", "#FF69B4"), labels = function(x) str_wrap(x, 17))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.5, color = "black", size = 2)
+ws5figure_pref
+ggsave(ws5figure_pref, 
+       filename = "ws5figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+```{r chidcare1 data clean}
+unique(initial_dat$childcare1)
+
+#response options
+# Full-time enrollment in an onsite GSA child care facility
+# Part-time enrollment in an onsite GSA child care facility
+# Drop-in care at an onsite GSA child care facility
+# Child care stipends / subsidies
+# Information about child care facilities near office locations
+# None, I am happy with my current child care arrangement
+
+initial_dat$childcare1 <- str_remove_all(initial_dat$childcare1, "[:punct:]")
+initial_dat$childcare1 <- str_squish(initial_dat$childcare1)
+
+initial_dat$childcare1full <- extract_and_binary(initial_dat, "Fulltime enrollment in an onsite GSA child care facility", initial_dat$childcare1)
+initial_dat$childcare1part <- extract_and_binary(initial_dat, "Parttime enrollment in an onsite GSA child care facility", initial_dat$childcare1)
+initial_dat$childcare1drop <- extract_and_binary(initial_dat, "Dropin care at an onsite GSA child care facility", initial_dat$childcare1)
+initial_dat$childcarestip <- extract_and_binary(initial_dat, "Child care stipends subsidies", initial_dat$childcare1)
+initial_dat$childcare1info <- extract_and_binary(initial_dat, "Information about child care facilities near office locations", initial_dat$childcare1)
+initial_dat$childcare1none <- extract_and_binary(initial_dat, "None I am happy with my current child care arrangement", initial_dat$childcare1)
+
+```
+
+
+```{r cc1 figure}
+cc1figure_dat <- initial_dat %>%
+  drop_na(pref_ws) %>%
+  select(childcare1none,childcarestip, childcare1part, childcare1full,childcare1drop,childcare1info, pref_ws) %>%
+  pivot_longer(c(childcare1none,childcarestip, childcare1part, childcare1full,childcare1drop,childcare1info), names_to = "cc1answer",
+               values_to = "count") %>%
+  group_by(pref_ws, cc1answer) %>%
+  summarise(sum = sum(count))
+cc1figure_dat
+#creating percent columns
+cc1figure_dat$perc1 <- cc1figure_dat$sum/sum(cc1figure_dat$sum) * 100  
+cc1figure_dat$perc1label <- paste0(sprintf("%.0f",
+                                       cc1figure_dat$perc1),"%")
+
+cc1figure_dat <- cc1figure_dat %>%
+ mutate(cc1answer = case_when(
+cc1answer == "childcare1none" ~"None",
+cc1answer =="childcarestip" ~ "Child care stipends / subsidies",
+cc1answer == "childcare1part" ~"Part-time enrollment",
+cc1answer =="childcare1full"~"Full-time enrollment",
+cc1answer =="childcare1drop"~"Drop-in care",
+cc1answer =="childcare1info" ~"Information about child care facilities"))
+
+
+
+#plot by category 
+#make the percent in each category 
+
+
+cc1figure_pref <- 
+  cc1figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>%
+  ggplot(aes(fill = reorder(cc1answer, -sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Which child care supports would you be interested in?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 6), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 0, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#A3238E", "#0FAFFF", "#007236","#0579BD", "#F7941E","#ED1C24","#A6CE39", "pink", "#F7643F","blue", "purple", "#FF69B4"), labels = function(x) str_wrap(x, 30))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.05, color = "black", size = 3)
+cc1figure_pref
+ggsave(cc1figure_pref, 
+       filename = "cc1figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+```{r f1 figures}
+#plot by category:
+#
+f1figure_dat <- count(initial_dat, f1, pref_ws)
+f1figure_dat <- f1figure_dat %>% 
+  drop_na(f1) %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(n / sum(n) * 100)) 
+f1figure_dat$f1 <- factor(f1figure_dat$f1, levels = c("Yes", "No", "Unsure"))
+f1figure_pref <- 
+  f1figure_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = round(n / sum(n) * 100))%>%
+  ggplot(aes(fill = f1, y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "Does your organization require a secure agency-dedicated WiFi?") +
+  xlab("Preference on Work Style") +
+  ylab("Percent of Respondents by Preference") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 8), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 0, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black", hjust = 0), plot.background = element_rect(color = "white"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#0FAFFF", "#0579BD", "#F7941E","#ED1C24","#A3238E","#A6CE39","#007236"), limits = c("Yes", "No", "Unsure"))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = n), position = position_dodge(.9), vjust = 1.1, color = "white", size = 5)
+f1figure_pref
+ggsave(f1figure_pref, 
+       filename = "f1figure_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+```{r f3 data clean}
+
+f3_dat <- initial_dat %>%
+  select(f3_1, f3_2, f3_3,f3_4, f3_5,f3_6,f3_7,f3_8, pref_ws) %>%
+  pivot_longer(c(f3_1, f3_2, f3_3,f3_4, f3_5,f3_6,f3_7,f3_8), names_to = "f3answer",
+               values_to = "answer")
+
+f3_dat <- f3_dat %>%
+  mutate(f3answer = case_when(
+f3answer == "f3_1" ~"Meeting and video conferencing equipment",
+f3answer == "f3_2" ~"Second monitor",
+f3answer == "f3_3" ~"Keyboard",
+f3answer == "f3_4" ~"Desktop computers with remote login capability",
+f3answer == "f3_5" ~"Smartboards",
+f3answer == "f3_6" ~"Printing services",
+f3answer == "f3_7" ~"Scanning / copying services",
+f3answer == "f3_8" ~"Other"))
+
+f3_dat$un <- extract_and_binary(f3_dat, "Unnecessary", f3_dat$answer)
+f3_dat$nec <- extract_and_binary(f3_dat, "Necessary", f3_dat$answer)
+f3_dat$neit <- extract_and_binary(f3_dat, "Neither necessary nor unnecessary", f3_dat$answer)
+f3_dat$no <- extract_and_binary(f3_dat, "Unsure", f3_dat$answer)
+f3_dat
+
+f3_dat <- f3_dat %>%
+  select(un, nec, neit, no, f3answer, pref_ws) %>% 
+  pivot_longer(c(un,nec,neit,no), names_to = "answer",
+               values_to = "count")
+
+f3_dat <- f3_dat %>%
+  mutate(answer = case_when(
+    answer == "un" ~"Unnecessary",
+    answer == "nec" ~"Necessary",
+    answer == "no" ~"Unsure",
+   answer == "neit" ~ "Neither necessary nor unnecessary"
+  ))
+
+```
+
+
+```{r f3 figure by category}
+
+#only using neccessary 
+f3fig_dat <- f3_dat %>%
+  filter(answer == "Necessary") %>%
+  group_by(pref_ws, f3answer) %>%
+  summarise(sum = sum(count))
+f3fig_dat$perc1 <- f3fig_dat$sum/sum(f3fig_dat$sum) * 100  
+
+f3fig_pref <- 
+  f3fig_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>%
+  ggplot(aes(fill = reorder(f3answer, -sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "How necessary are the following IT features?") +
+  xlab("Work Style in a Typical Pay Period") +
+  ylab("Percent of Respondents by Work Style") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 6), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 0, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold"), plot.background = element_rect(color = "white")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#A3238E", "#0FAFFF", "#007236","#0579BD", "#F7941E","#ED1C24","#A6CE39", "pink", "#F7643F","blue", "purple", "#FF69B4"), labels = function(x) str_wrap(x, 30))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.05, color = "black", size = 3)
+f3fig_pref
+ggsave(f3fig_pref, 
+       filename = "f3fig_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
+
+
+
+
+```{r f4 data clean}
+
+f4_dat <- initial_dat %>%
+  select(f4_1, f4_2, f4_3,f4_4, f4_5, pref_ws) %>%
+  pivot_longer(c(f4_1, f4_2, f4_3,f4_4, f4_5), names_to = "f4answer",
+               values_to = "answer")
+
+f4_dat <- f4_dat %>%
+  mutate(f4answer = case_when(
+f4answer == "f4_1" ~"Managed kitchens",
+f4answer == "f4_2" ~"Dedicated space to leave personal items",
+f4answer == "f4_3" ~"Access to childcare",
+f4answer == "f4_4" ~"Programming activities",
+f4answer == "f4_5" ~"Other"))
+
+f4_dat$un <- extract_and_binary(f4_dat, "Unnecessary", f4_dat$answer)
+f4_dat$nec <- extract_and_binary(f4_dat, "Necessary", f4_dat$answer)
+f4_dat$neit <- extract_and_binary(f4_dat, "Neither necessary nor unnecessary", f4_dat$answer)
+f4_dat$no <- extract_and_binary(f4_dat, "Unsure", f4_dat$answer)
+
+f4_dat <- f4_dat %>%
+  select(f4answer,un,nec,neit,no, pref_ws) %>%
+  pivot_longer(c(un,nec,neit,no), names_to = "answer",
+               values_to = "count")
+
+f4_dat <- f4_dat %>%
+  mutate(answer = case_when(
+    answer == "un" ~"Unnecessary",
+    answer == "nec" ~"Necessary",
+    answer == "no" ~"Unsure",
+   answer == "neit" ~ "Neither necessary nor unnecessary"
+  ))
+
+```
+
+
+
+```{r f4 figure by category}
+
+#only using neccessary 
+f4fig_dat <- f4_dat %>%
+  filter(answer == "Necessary") %>%
+  group_by(pref_ws, f4answer) %>%
+  summarise(sum = sum(count))
+f4fig_dat$perc1 <- f4fig_dat$sum/sum(f4fig_dat$sum) * 100  
+f4fig_dat
+f4fig_pref <- 
+  f4fig_dat %>% 
+  filter(pref_ws != "Unsure") %>%
+  group_by(pref_ws)%>% 
+  mutate(freq = sum / sum(sum) * 100) %>%
+  ggplot(aes(fill = reorder(f4answer,-sum), y = freq, x = pref_ws)) +
+    geom_bar(position="dodge", stat="identity")+
+  theme_gdocs() +
+  labs(title = "How necessary are the following amenities?") +
+  xlab("Work Style in a Typical Pay Period") +
+  ylab("Percent of Respondents by Work Style") +
+ theme(legend.title = element_blank(), legend.position = "top", legend.text = element_text(color = "black",size = 6), legend.justification = "left", legend.direction  = "horizontal") +
+  theme(
+    plot.title = element_text(hjust = 0, face = "bold",
+      size = 11, colour = "black"
+    ), axis.title = element_text(face = "bold", size = 9, color = "black"))  +
+  theme(axis.text.x=element_text(color = "black", size = rel(0.8),vjust =1, face = "bold"), plot.background = element_rect(color = "white")) +
+  theme(axis.text.y = element_text(color = "black", size = rel(0.8),vjust =1)) +
+  scale_fill_manual(values = c("#003C71", "#A3238E", "#0FAFFF", "#007236","#0579BD", "#F7941E","#ED1C24","#A6CE39", "pink", "#F7643F","blue", "purple", "#FF69B4"), labels = function(x) str_wrap(x, 30))  +
+     theme( # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line(linewidth = 0.1)) +
+    geom_text(aes(label = sum), position = position_dodge(.9), vjust = -0.05, color = "black", size = 3)
+f4fig_pref
+ggsave(f4fig_pref, 
+       filename = "f4fig_pref.jpeg",
+       device = "jpeg",
+       height = 1080, width = 1920, units = "px")
+```
+
